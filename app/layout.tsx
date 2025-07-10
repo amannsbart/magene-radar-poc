@@ -2,7 +2,6 @@ import { GeistSans } from 'geist/font/sans'
 import { Metadata } from 'next'
 import { ThemeProvider } from 'next-themes'
 import { APP_NAME, APP_DEFAULT_TITLE, APP_DESCRIPTION, APP_URL, APP_AUTHOR } from '@config/index'
-import { ErudaLoader } from '@lib/components/eruda-loader'
 import { Header } from '@lib/components/header'
 import { Toaster } from '@lib/components/ui/sonner'
 import './globals.css'
@@ -68,7 +67,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           <main className="bg-background w-full overflow-y-auto px-4 pb-12 pt-4 2xl:max-w-7xl">
             {children}
           </main>
-          <ErudaLoader />
           <Toaster richColors />
         </ThemeProvider>
       </body>
