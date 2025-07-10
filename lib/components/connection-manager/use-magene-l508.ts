@@ -218,10 +218,10 @@ async function readCharacteristic(
 }
 
 async function validateDevice(service: BluetoothRemoteGATTService, decoder: TextDecoder) {
-  const [manufacturerValue, modelValue] = await Promise.all([
-    service.getCharacteristic(MANUFACTURER_CHARACTERISTIC).then((c) => c.readValue()),
-    service.getCharacteristic(MODEL_CHARACTERISTIC).then((c) => c.readValue()),
-  ])
+  const manufacturerCharacteristic = await service.getCharacteristic(MANUFACTURER_CHARACTERISTIC)
+  const modelCharacteristic = await service.getCharacteristic(MODEL_CHARACTERISTIC)
+  const manufacturerValue = await manufacturerCharacteristic.readValue()
+  const modelValue = await modelCharacteristic.readValue()
 
   const manufacturer = decoder.decode(new Uint8Array(manufacturerValue.buffer))
   const model = decoder.decode(new Uint8Array(modelValue.buffer)).trim()
@@ -391,9 +391,9 @@ export function useMageneL508() {
 
       const deviceInfoService = await server.getPrimaryService(DEVICE_INFO_SERVICE)
       const deviceNameService = await server.getPrimaryService(DEVICE_NAME_SERVICE)
+      await deviceInfoService.getCharacteristic(MODEL_CHARACTERISTIC)
 
       await validateDevice(deviceInfoService, decoder)
-
       device.addEventListener('gattserverdisconnected', handleDisconnect)
 
       deviceRef.current = device
@@ -402,10 +402,16 @@ export function useMageneL508() {
 
       setStatus('connected')
 
-      const [deviceName, firmwareVersion] = await Promise.all([
-        readCharacteristic(deviceNameService, DEVICE_NAME_CHARACTERISTIC, decoder),
-        readCharacteristic(deviceInfoService, FIRMWARE_VERSION_CHARACTERISTIC, decoder),
-      ])
+      const deviceName = await readCharacteristic(
+        deviceNameService,
+        DEVICE_NAME_CHARACTERISTIC,
+        decoder
+      )
+      const firmwareVersion = await readCharacteristic(
+        deviceInfoService,
+        FIRMWARE_VERSION_CHARACTERISTIC,
+        decoder
+      )
 
       const batteryService = await server.getPrimaryService(BATTERY_SERVICE)
       const batteryLevelCharacteristic = await batteryService.getCharacteristic(
@@ -440,8 +446,8 @@ export function useMageneL508() {
       )
 
       radarLightCharacteristicRef.current = radarLightCharacteristic
-
       await radarLightCharacteristic.writeValue(LIGHT_MAGIC_BYTES)
+      await new Promise((resolve) => setTimeout(resolve, 500))
       await radarLightCharacteristic.writeValue(RADAR_MAGIC_BYTES)
 
       return { success: true, data: undefined }
