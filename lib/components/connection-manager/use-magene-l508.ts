@@ -152,7 +152,7 @@ function parseRadarData(value: DataView): RadarData {
   }
 
   // Extract target data from remaining bytes
-  const data = value.buffer.slice(4)
+  const data = value.buffer.slice(3)
   const bytes = new Uint8Array(data)
 
   if (bytes.length < 7) {
@@ -162,38 +162,38 @@ function parseRadarData(value: DataView): RadarData {
   // Base target ID offset (1-4 for page A, 5-8 for page B)
   const baseTargetId = page === 0x30 ? 1 : 5
 
-  // Threat Level (2 bits per target) in byte 1 - MSB first
+  // Threat Level (2 bits per target) in byte 1 - LSB first
   const threatLevels = [
-    extractBits(bytes[1], 6, 2), // Target 1 - bits 6-7 (MSB)
-    extractBits(bytes[1], 4, 2), // Target 2 - bits 4-5
-    extractBits(bytes[1], 2, 2), // Target 3 - bits 2-3
-    extractBits(bytes[1], 0, 2), // Target 4 - bits 0-1 (LSB)
+    extractBits(bytes[1], 0, 2), // Target 1 - bits 0-1 (LSB)
+    extractBits(bytes[1], 2, 2), // Target 2 - bits 2-3
+    extractBits(bytes[1], 4, 2), // Target 3 - bits 4-5
+    extractBits(bytes[1], 6, 2), // Target 4 - bits 6-7 (MSB)
   ]
 
-  // Threat Side (2 bits per target) in byte 2 - MSB first
+  // Threat Side (2 bits per target) in byte 2 - LSB first
   const threatSides = [
-    extractBits(bytes[2], 6, 2), // Target 1 - bits 6-7 (MSB)
-    extractBits(bytes[2], 4, 2), // Target 2 - bits 4-5
-    extractBits(bytes[2], 2, 2), // Target 3 - bits 2-3
-    extractBits(bytes[2], 0, 2), // Target 4 - bits 0-1 (LSB)
+    extractBits(bytes[2], 0, 2), // Target 1 - bits 0-1 (LSB)
+    extractBits(bytes[2], 2, 2), // Target 2 - bits 2-3
+    extractBits(bytes[2], 4, 2), // Target 3 - bits 4-5
+    extractBits(bytes[2], 6, 2), // Target 4 - bits 6-7 (MSB)
   ]
 
-  // Range (6 bits per target) packed in bytes 3-5 - MSB first
-  const rangeBits = (bytes[3] << 16) | (bytes[4] << 8) | bytes[5]
+  // Range (6 bits per target) packed in bytes 3-5 - LSB first
+  const rangeBits = (bytes[5] << 16) | (bytes[4] << 8) | bytes[3]
   const ranges = [
-    extractBits(rangeBits, 18, 6), // Target 1 - bits 23-18
-    extractBits(rangeBits, 12, 6), // Target 2 - bits 17-12
-    extractBits(rangeBits, 6, 6), // Target 3 - bits 11-6
-    extractBits(rangeBits, 0, 6), // Target 4 - bits 5-0
+    extractBits(rangeBits, 0, 6), // Target 1 - bits 0-5 (LSB)
+    extractBits(rangeBits, 6, 6), // Target 2 - bits 6-11
+    extractBits(rangeBits, 12, 6), // Target 3 - bits 12-17
+    extractBits(rangeBits, 18, 6), // Target 4 - bits 17-23 (MSB)
   ].map((r) => r * RANGE_UNIT)
 
-  // Speed (4 bits per target) packed in bytes 6-7 - MSB first
-  const speedBits = (bytes[6] << 8) | bytes[7]
+  // Speed (4 bits per target) packed in bytes 6-7 - LSB first
+  const speedBits = (bytes[7] << 8) | bytes[6]
   const speeds = [
-    extractBits(speedBits, 12, 4), // Target 1 - bits 15-12
-    extractBits(speedBits, 8, 4), // Target 2 - bits 11-8
-    extractBits(speedBits, 4, 4), // Target 3 - bits 7-4
-    extractBits(speedBits, 0, 4), // Target 4 - bits 3-0
+    extractBits(speedBits, 0, 4), // Target 1 - bits 0-3
+    extractBits(speedBits, 4, 4), // Target 2 - bits 4-7
+    extractBits(speedBits, 8, 4), // Target 3 - bits 8-11
+    extractBits(speedBits, 12, 4), // Target 4 - bits 12-15
   ].map((s) => s * SPEED_UNIT)
 
   // Build target objects
