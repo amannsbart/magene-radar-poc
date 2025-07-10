@@ -66,7 +66,7 @@ export function RadarThreatsTable({ targets }: RadarThreatsTableProps) {
                 <TableHead>Threat Level</TableHead>
                 <TableHead>Side</TableHead>
                 <TableHead>Range (m)</TableHead>
-                <TableHead>Speed (m/s)</TableHead>
+                <TableHead>Speed (km/h)</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -106,7 +106,7 @@ export function RadarThreatsTable({ targets }: RadarThreatsTableProps) {
                     <TableCell>
                       {hasData ? (
                         target!.threatLevel > 0 ? (
-                          target!.speed.toFixed(1)
+                          (target!.speed * 3.6).toFixed(1)
                         ) : (
                           '-'
                         )
