@@ -43,7 +43,7 @@ type ConnectionResult = Result<void, BaseError>
 type RadarResult = Result<RadarData, BaseError>
 
 class ConnectionError extends BaseError {
-  readonly type = 'bluetooth' as const
+  readonly type = 'connection' as const
 }
 
 class ValidationError extends BaseError {
@@ -287,6 +287,9 @@ export function useMageneL508() {
     const target = event.target as BluetoothRemoteGATTCharacteristic
     const value = target.value
     if (!value) return
+
+    console.warn('🔍 Debugging notification data received:')
+    console.log('Full hex data:', getBytesAsHex(value))
 
     if (
       startsWith(value, ANT_RADAR_IDENTIFIER_PAGE_1) ||
