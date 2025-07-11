@@ -25,7 +25,7 @@ type LightData = {
   modeValue: number // 0-6
 }
 
-type RadarTarget = {
+export type RadarTarget = {
   id: number // 1-8 (1-4 for page A, 5-8 for page B)
   threatLevel: number // 0: No Threat, 1: Vehicle Approach, 2: Vehicle Fast Approach, 3: Reserved
   threatSide: number // 0: No Side, 1: Left, 2: Right, 3: Reserved
@@ -40,7 +40,7 @@ type RadarData = {
 type LightResult = Result<LightData, BaseError>
 type StatsResult = Result<DeviceStats, BaseError>
 type ConnectionResult = Result<void, BaseError>
-type RadarResult = Result<RadarData, BaseError>
+type RadarResult = Result<RadarTarget[], BaseError>
 
 class ConnectionError extends BaseError {
   readonly type = 'connection' as const
@@ -72,7 +72,7 @@ const RADARLIGHT_CHARACTERISTIC = '8ce5cc02-0a4d-11e9-ab14-d663bd873d93'
 const RADAR_MAGIC_BYTES = new Uint8Array([0x57, 0x09, 0x01])
 const LIGHT_MAGIC_BYTES = new Uint8Array([0x57, 0x0a, 0x00])
 const ANT_RADAR_IDENTIFIER_PAGE_1 = new Uint8Array([0x57, 0x09, 0x00, 0x30])
-const ANT_RADAR_IDENTIFIER_PAGE_2 = new Uint8Array([0x57, 0x09, 0x00, 0x30])
+const ANT_RADAR_IDENTIFIER_PAGE_2 = new Uint8Array([0x57, 0x09, 0x00, 0x31])
 const ANT_MANUFACTURER_INFORMATION_IDENTIFIER = new Uint8Array([0x57, 0x09, 0x00, 0x50])
 const ANT_PRODUCT_INFORMATION_IDENTIFIER = new Uint8Array([0x57, 0x09, 0x00, 0x51])
 const ANT_BATTERY_INFORMATION_IDENTIFIER = new Uint8Array([0x57, 0x09, 0x00, 0x52])
@@ -162,7 +162,7 @@ function parseRadarData(value: DataView): RadarData {
   // Base target ID offset (1-4 for page A, 5-8 for page B)
   const baseTargetId = page === 0x30 ? 1 : 5
 
-  // Threat Level (2 bits per target) in byte 1 - LSB first
+  // First pass: Extract threat levels (always needed)
   const threatLevels = [
     extractBits(bytes[1], 0, 2), // Target 1 - bits 0-1 (LSB)
     extractBits(bytes[1], 2, 2), // Target 2 - bits 2-3
@@ -170,40 +170,29 @@ function parseRadarData(value: DataView): RadarData {
     extractBits(bytes[1], 6, 2), // Target 4 - bits 6-7 (MSB)
   ]
 
-  // Threat Side (2 bits per target) in byte 2 - LSB first
-  const threatSides = [
-    extractBits(bytes[2], 0, 2), // Target 1 - bits 0-1 (LSB)
-    extractBits(bytes[2], 2, 2), // Target 2 - bits 2-3
-    extractBits(bytes[2], 4, 2), // Target 3 - bits 4-5
-    extractBits(bytes[2], 6, 2), // Target 4 - bits 6-7 (MSB)
-  ]
+  const hasActiveTargets = threatLevels.some((level) => level > 0)
 
-  // Range (6 bits per target) packed in bytes 3-5 - LSB first
+  if (!hasActiveTargets) {
+    return { page, targets: [] }
+  }
+
+  const sideBits = bytes[2]
   const rangeBits = (bytes[5] << 16) | (bytes[4] << 8) | bytes[3]
-  const ranges = [
-    extractBits(rangeBits, 0, 6), // Target 1 - bits 0-5 (LSB)
-    extractBits(rangeBits, 6, 6), // Target 2 - bits 6-11
-    extractBits(rangeBits, 12, 6), // Target 3 - bits 12-17
-    extractBits(rangeBits, 18, 6), // Target 4 - bits 17-23 (MSB)
-  ].map((r) => r * RANGE_UNIT)
-
-  // Speed (4 bits per target) packed in bytes 6-7 - LSB first
   const speedBits = (bytes[7] << 8) | bytes[6]
-  const speeds = [
-    extractBits(speedBits, 0, 4), // Target 1 - bits 0-3
-    extractBits(speedBits, 4, 4), // Target 2 - bits 4-7
-    extractBits(speedBits, 8, 4), // Target 3 - bits 8-11
-    extractBits(speedBits, 12, 4), // Target 4 - bits 12-15
-  ].map((s) => s * SPEED_UNIT)
 
-  // Build target objects
-  const targets = threatLevels.map((threatLevel, i) => ({
-    id: baseTargetId + i,
-    threatLevel,
-    threatSide: threatSides[i],
-    range: threatLevel !== 0 ? ranges[i] : 0,
-    speed: threatLevel !== 0 ? speeds[i] : 0,
-  }))
+  const targets = threatLevels.reduce<RadarTarget[]>((acc, threatLevel, i) => {
+    if (threatLevel > 0) {
+      acc.push({
+        id: baseTargetId + i,
+        threatLevel,
+        threatSide: extractBits(sideBits, i * 2, 2),
+        range: extractBits(rangeBits, i * 6, 6) * RANGE_UNIT,
+        speed: extractBits(speedBits, i * 4, 4) * SPEED_UNIT,
+      })
+    }
+    return acc
+  }, [])
+
   return { page, targets }
 }
 
@@ -246,6 +235,10 @@ export function useMageneL508() {
   const serviceRef = useRef<BluetoothRemoteGATTService | null>(null)
   const batteryCharacteristicRef = useRef<BluetoothRemoteGATTCharacteristic | null>(null)
   const radarLightCharacteristicRef = useRef<BluetoothRemoteGATTCharacteristic | null>(null)
+  const radarDataPage1Ref = useRef<RadarTarget[]>([])
+  const radarDataPage2Ref = useRef<RadarTarget[]>([])
+  const radarTimeoutPage1Ref = useRef<NodeJS.Timeout | null>(null)
+  const radarTimeoutPage2Ref = useRef<NodeJS.Timeout | null>(null)
   const mountedRef = useRef(true)
 
   const decoder = useMemo(() => new TextDecoder('utf-8'), [])
@@ -253,6 +246,16 @@ export function useMageneL508() {
   useEffect(() => {
     return () => {
       mountedRef.current = false
+
+      const timeout1Ref = radarTimeoutPage1Ref
+      const timeout2Ref = radarTimeoutPage2Ref
+
+      if (timeout1Ref.current) {
+        clearTimeout(timeout1Ref.current)
+      }
+      if (timeout2Ref.current) {
+        clearTimeout(timeout2Ref.current)
+      }
       if (batteryCharacteristicRef.current) {
         try {
           batteryCharacteristicRef.current.stopNotifications()
@@ -288,16 +291,31 @@ export function useMageneL508() {
     const value = target.value
     if (!value) return
 
-    console.warn('🔍 Debugging notification data received:')
-    console.log('Full hex data:', getBytesAsHex(value))
-
     if (
       startsWith(value, ANT_RADAR_IDENTIFIER_PAGE_1) ||
       startsWith(value, ANT_RADAR_IDENTIFIER_PAGE_2)
     ) {
       try {
         const radarData = parseRadarData(value)
-        setRadarResult({ success: true, data: radarData })
+
+        const pageConfig = {
+          0x30: { dataRef: radarDataPage1Ref, timeoutRef: radarTimeoutPage1Ref },
+          0x31: { dataRef: radarDataPage2Ref, timeoutRef: radarTimeoutPage2Ref },
+        }
+
+        const config = pageConfig[radarData.page]
+        if (config) {
+          config.dataRef.current = radarData.targets
+          if (config.timeoutRef.current) {
+            clearTimeout(config.timeoutRef.current)
+          }
+          config.timeoutRef.current = setTimeout(() => {
+            config.dataRef.current = []
+          }, 2000) //according to ANT+ specs
+        }
+
+        const combinedTargets = [...radarDataPage1Ref.current, ...radarDataPage2Ref.current]
+        setRadarResult({ success: true, data: combinedTargets })
       } catch (error) {
         if (error instanceof RadarError) {
           setRadarResult({ success: false, error })

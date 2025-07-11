@@ -64,7 +64,7 @@ export function ConnectionManager() {
   }
 
   const getRadarProps = () => {
-    const targets = radarResult?.success ? radarResult.data.targets : undefined
+    const targets = radarResult?.success ? radarResult.data : undefined
     return {
       targets,
     }
