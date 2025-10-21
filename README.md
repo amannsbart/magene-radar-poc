@@ -1,4 +1,4 @@
-# Circle of Light Landing Page
+# Magene L508 Radar Client PoC
 
 ## Overview
 
